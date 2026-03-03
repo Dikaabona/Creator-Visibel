@@ -1,0 +1,8 @@
+{
+  "name": "Visibel Creator - Your Trusted Growth Partner",
+  "description": "A smart platform connecting brands with creators, featuring AI-powered search, tiering classification, and multi-tenant access control.",
+  "requestFramePermissions": [
+    "camera",
+    "microphone"
+  ]
+}
