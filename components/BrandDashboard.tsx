@@ -11,6 +11,10 @@ interface BrandDashboardProps {
   onRejectContent: (applicationId: string) => void;
   onSendBrief: (applicationId: string) => void;
   onRateCreator: (applicationId: string, rating: number, feedback: string) => void;
+  onAcceptApplication: (applicationId: string) => void;
+  onRejectApplication: (applicationId: string) => void;
+  onPublishCampaign: (campaignId: string) => void;
+  onEditCampaign: (campaign: Campaign) => void;
 }
 
 const BrandDashboard: React.FC<BrandDashboardProps> = ({
@@ -22,7 +26,11 @@ const BrandDashboard: React.FC<BrandDashboardProps> = ({
   onApproveContent,
   onRejectContent,
   onSendBrief,
-  onRateCreator
+  onRateCreator,
+  onAcceptApplication,
+  onRejectApplication,
+  onPublishCampaign,
+  onEditCampaign
 }) => {
   const [activeTab, setActiveTab] = useState<'campaigns' | 'tracking'>('campaigns');
 
@@ -68,9 +76,31 @@ const BrandDashboard: React.FC<BrandDashboardProps> = ({
                   <span className={`px-3 py-1 rounded-lg text-[10px] font-black uppercase tracking-widest ${campaign.status === CampaignStatus.ACTIVE ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>
                     {campaign.status}
                   </span>
-                  <div className="text-yellow-600 font-black text-sm">Rp {campaign.budget.toLocaleString()}</div>
+                  <div className="flex items-center space-x-2">
+                    <button 
+                      onClick={() => onEditCampaign(campaign)}
+                      className="p-2 text-slate-400 hover:text-yellow-600 transition-colors"
+                      title="Edit Campaign"
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
+                    </button>
+                    <div className="text-yellow-600 font-black text-sm">Rp {campaign.budget.toLocaleString()}</div>
+                  </div>
                 </div>
                 <h3 className="text-xl font-black text-slate-900 mb-2">{campaign.name}</h3>
+                
+                {campaign.status === CampaignStatus.DRAFT && (
+                  <button 
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onPublishCampaign(campaign.id);
+                    }}
+                    className="w-full mt-2 py-3 bg-emerald-500 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-emerald-600 transition-all shadow-lg shadow-emerald-500/20 cursor-pointer relative z-10"
+                  >
+                    Publish Campaign
+                  </button>
+                )}
+
                 <div className="grid grid-cols-2 gap-4 mt-6">
                   <div className="bg-slate-50 p-3 rounded-2xl">
                     <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Creators</div>
@@ -113,10 +143,22 @@ const BrandDashboard: React.FC<BrandDashboardProps> = ({
                       </td>
                       <td className="px-6 py-4 font-bold text-slate-600">{campaign.name}</td>
                       <td className="px-6 py-4">
-                        <span className="px-3 py-1 bg-slate-100 text-slate-500 rounded-lg text-[10px] font-black uppercase tracking-widest">{app.status}</span>
+                        <span className={`px-3 py-1 rounded-lg text-[10px] font-black uppercase tracking-widest ${
+                          app.status === ApplicationStatus.ACCEPTED ? 'bg-emerald-100 text-emerald-700' :
+                          app.status === ApplicationStatus.REJECTED ? 'bg-red-100 text-red-700' :
+                          'bg-slate-100 text-slate-500'
+                        }`}>
+                          {app.status}
+                        </span>
                       </td>
                       <td className="px-6 py-4">
                         {app.status === ApplicationStatus.PENDING && (
+                          <div className="flex space-x-2">
+                            <button onClick={() => onAcceptApplication(app.id)} className="px-4 py-2 bg-yellow-400 text-black rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-yellow-500 transition-all">Accept</button>
+                            <button onClick={() => onRejectApplication(app.id)} className="px-4 py-2 bg-white text-red-500 border border-red-100 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-red-50 transition-all">Denied</button>
+                          </div>
+                        )}
+                        {app.status === ApplicationStatus.ACCEPTED && (
                           <button onClick={() => onSendBrief(app.id)} className="px-4 py-2 bg-black text-yellow-400 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-slate-800 transition-all">Send Brief</button>
                         )}
                         {app.status === ApplicationStatus.CONTENT_UPLOADED && (

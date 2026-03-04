@@ -49,9 +49,6 @@ const LandingPage: React.FC<LandingPageProps> = ({ onEnterApp }) => {
             >
               Mulai Sekarang
             </button>
-            <button className="w-full sm:w-auto px-10 py-5 bg-white text-slate-900 border-2 border-slate-100 rounded-2xl font-black text-lg hover:bg-slate-50 transition-all active:scale-95">
-              Pelajari Lebih Lanjut
-            </button>
           </div>
         </div>
       </section>
@@ -119,7 +116,7 @@ const LandingPage: React.FC<LandingPageProps> = ({ onEnterApp }) => {
               <div className="absolute inset-0 bg-gradient-to-t from-black/80 to-transparent flex items-end p-12">
                 <div>
                   <div className="text-sm font-black uppercase tracking-widest text-yellow-400 mb-2">Creator Life</div>
-                  <div className="text-2xl font-bold">"Fokus berkarya, biarkan Visibel yang mencarikan job."</div>
+                  <div className="text-2xl font-bold">"Fokus berkarya, biarkan Visibel yang mencarikan Brand."</div>
                 </div>
               </div>
             </div>

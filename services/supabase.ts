@@ -109,6 +109,13 @@ export const upsertCampaign = async (campaign: Partial<Campaign>) => {
   return data?.[0];
 };
 
+export const updateCampaign = async (id: string, updates: Partial<Campaign>) => {
+  const supabase = getSupabase();
+  const { data, error } = await supabase.from('campaigns').update(updates).eq('id', id).select();
+  if (error) throw error;
+  return data?.[0];
+};
+
 export const applyToCampaign = async (application: Partial<Application>) => {
   const supabase = getSupabase();
   const { data, error } = await supabase.from('applications').insert(application).select();

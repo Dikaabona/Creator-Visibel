@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Creator, Campaign, Application, ApplicationStatus } from '../types';
+import { Creator, Campaign, Application, ApplicationStatus, CampaignStatus } from '../types';
 
 interface CreatorDashboardProps {
   creator: Creator;
@@ -52,14 +52,14 @@ const CreatorDashboard: React.FC<CreatorDashboardProps> = ({
           onClick={() => setActiveTab('explore')}
           className={`pb-4 px-4 text-sm font-black uppercase tracking-widest transition-all relative ${activeTab === 'explore' ? 'text-black' : 'text-slate-400 hover:text-slate-600'}`}
         >
-          Explore Campaigns
+          Cari Campaign
           {activeTab === 'explore' && <div className="absolute bottom-0 left-0 w-full h-1 bg-yellow-400 rounded-t-full"></div>}
         </button>
         <button 
           onClick={() => setActiveTab('my-jobs')}
           className={`pb-4 px-4 text-sm font-black uppercase tracking-widest transition-all relative ${activeTab === 'my-jobs' ? 'text-black' : 'text-slate-400 hover:text-slate-600'}`}
         >
-          My Jobs
+          Campaign Saya
           {activeTab === 'my-jobs' && <div className="absolute bottom-0 left-0 w-full h-1 bg-yellow-400 rounded-t-full"></div>}
         </button>
       </div>
@@ -67,33 +67,35 @@ const CreatorDashboard: React.FC<CreatorDashboardProps> = ({
       {/* Content */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {activeTab === 'explore' ? (
-          campaigns.map(campaign => {
-            const app = getApplication(campaign.id);
-            return (
-              <div key={campaign.id} className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm hover:shadow-xl hover:shadow-yellow-400/5 transition-all group">
-                <div className="flex justify-between items-start mb-4">
-                  <div className="px-3 py-1 bg-slate-100 text-slate-500 rounded-lg text-[10px] font-black uppercase tracking-widest">{campaign.brandName}</div>
-                  <div className="text-yellow-600 font-black text-sm">Rp {campaign.budget.toLocaleString()}</div>
+          campaigns
+            .filter(c => c.status === CampaignStatus.ACTIVE)
+            .map(campaign => {
+              const app = getApplication(campaign.id);
+              return (
+                <div key={campaign.id} className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm hover:shadow-xl hover:shadow-yellow-400/5 transition-all group">
+                  <div className="flex justify-between items-start mb-4">
+                    <div className="px-3 py-1 bg-slate-100 text-slate-500 rounded-lg text-[10px] font-black uppercase tracking-widest">{campaign.brandName}</div>
+                    <div className="text-yellow-600 font-black text-sm">Rp {campaign.budget.toLocaleString()}</div>
+                  </div>
+                  <h3 className="text-xl font-black text-slate-900 mb-2 group-hover:text-yellow-600 transition-colors">{campaign.name}</h3>
+                  <p className="text-slate-500 text-sm mb-6 line-clamp-2 font-medium">{campaign.brief}</p>
+                  
+                  <div className="flex items-center justify-between mt-auto">
+                    <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Deadline: {new Date(campaign.deadline).toLocaleDateString()}</div>
+                    {app ? (
+                      <span className="px-4 py-2 bg-slate-100 text-slate-400 rounded-xl text-xs font-black uppercase tracking-widest">Applied</span>
+                    ) : (
+                      <button 
+                        onClick={() => onApply(campaign.id)}
+                        className="px-6 py-2 bg-yellow-400 text-black rounded-xl text-xs font-black uppercase tracking-widest hover:bg-yellow-500 transition-all active:scale-95 shadow-lg shadow-yellow-400/20"
+                      >
+                        Apply
+                      </button>
+                    )}
+                  </div>
                 </div>
-                <h3 className="text-xl font-black text-slate-900 mb-2 group-hover:text-yellow-600 transition-colors">{campaign.name}</h3>
-                <p className="text-slate-500 text-sm mb-6 line-clamp-2 font-medium">{campaign.brief}</p>
-                
-                <div className="flex items-center justify-between mt-auto">
-                  <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Deadline: {new Date(campaign.deadline).toLocaleDateString()}</div>
-                  {app ? (
-                    <span className="px-4 py-2 bg-slate-100 text-slate-400 rounded-xl text-xs font-black uppercase tracking-widest">Applied</span>
-                  ) : (
-                    <button 
-                      onClick={() => onApply(campaign.id)}
-                      className="px-6 py-2 bg-yellow-400 text-black rounded-xl text-xs font-black uppercase tracking-widest hover:bg-yellow-500 transition-all active:scale-95 shadow-lg shadow-yellow-400/20"
-                    >
-                      Apply
-                    </button>
-                  )}
-                </div>
-              </div>
-            );
-          })
+              );
+            })
         ) : (
           applications.map(app => {
             const campaign = campaigns.find(c => c.id === app.campaignId);

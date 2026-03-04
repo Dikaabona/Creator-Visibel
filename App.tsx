@@ -8,10 +8,11 @@ import AuthPage from './components/AuthPage';
 import CreatorDashboard from './components/CreatorDashboard';
 import BrandDashboard from './components/BrandDashboard';
 import ProfileEditor from './components/ProfileEditor';
+import CreatorHome from './components/CreatorHome';
 import { UserRole, CreatorTier, SearchFilters, Creator, Campaign, CampaignStatus, Application, ApplicationStatus } from './types';
 import { MOCK_CREATORS, MOCK_CAMPAIGNS, getTier } from './data';
 import { parseUserQuery } from './services/geminiService';
-import { upsertCreators, deleteCreators, fetchCreators, getSupabase, fetchCampaigns, fetchApplications, applyToCampaign, updateApplicationStatus, upsertCampaign } from './services/supabase';
+import { upsertCreators, deleteCreators, fetchCreators, getSupabase, fetchCampaigns, fetchApplications, applyToCampaign, updateApplicationStatus, upsertCampaign, updateCampaign } from './services/supabase';
 import * as XLSX from 'xlsx';
 
 const ITEMS_PER_PAGE = 10;
@@ -20,7 +21,7 @@ const CAMPAIGN_STORAGE_KEY = 'visibel_campaigns_data';
 
 const App: React.FC = () => {
   const [viewMode, setViewMode] = useState<'landing' | 'auth' | 'app'>('landing');
-  const [activeView, setActiveView] = useState<'creators' | 'campaigns' | 'analytics' | 'profile' | 'my-campaigns' | 'system'>('creators');
+  const [activeView, setActiveView] = useState<'home' | 'creators' | 'campaigns' | 'analytics' | 'profile' | 'my-campaigns' | 'system'>('creators');
   const [session, setSession] = useState<any>(null);
   const [isAuthLoading, setIsAuthLoading] = useState(true);
 
@@ -53,6 +54,7 @@ const App: React.FC = () => {
   const [selectedModalCreatorIds, setSelectedModalCreatorIds] = useState<string[]>([]);
   const [activeCampaignId, setActiveCampaignId] = useState<string | null>(null);
   const [editingCreator, setEditingCreator] = useState<Creator | null>(null);
+  const [editingCampaign, setEditingCampaign] = useState<Campaign | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
   const [selectedCreatorIds, setSelectedCreatorIds] = useState<string[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -62,7 +64,7 @@ const App: React.FC = () => {
   });
 
   const [campaignFormData, setCampaignFormData] = useState({
-    name: '', brand: '', budget: '', startDate: '', endDate: '', category: ''
+    name: '', brand: '', budget: '', startDate: '', endDate: '', category: '', brief: ''
   });
 
   const [applications, setApplications] = useState<Application[]>([]);
@@ -126,6 +128,18 @@ const App: React.FC = () => {
   }, []);
 
   useEffect(() => {
+    if (session) {
+      if (role === UserRole.CREATOR) {
+        setActiveView('home');
+      } else if (role === UserRole.BRAND) {
+        setActiveView('creators');
+      } else if (role === UserRole.ADMIN) {
+        setActiveView('creators');
+      }
+    }
+  }, [session, role]);
+
+  useEffect(() => {
     const loadData = async () => {
       try {
         const [creatorsData, campaignsData, appsData] = await Promise.all([
@@ -140,7 +154,58 @@ const App: React.FC = () => {
         console.error('Failed to load data from Supabase:', err);
       }
     };
-    loadData();
+
+    if (session) {
+      loadData();
+
+      // Real-time listeners
+      const supabase = getSupabase();
+      
+      const campaignSubscription = supabase
+        .channel('campaigns_changes')
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'campaigns' }, (payload) => {
+          if (payload.eventType === 'INSERT') {
+            setCampaigns(prev => [payload.new as Campaign, ...prev]);
+          } else if (payload.eventType === 'UPDATE') {
+            setCampaigns(prev => prev.map(c => c.id === payload.new.id ? payload.new as Campaign : c));
+          } else if (payload.eventType === 'DELETE') {
+            setCampaigns(prev => prev.filter(c => c.id !== payload.old.id));
+          }
+        })
+        .subscribe();
+
+      const applicationSubscription = supabase
+        .channel('applications_changes')
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'applications' }, (payload) => {
+          if (payload.eventType === 'INSERT') {
+            setApplications(prev => [payload.new as Application, ...prev]);
+          } else if (payload.eventType === 'UPDATE') {
+            setApplications(prev => prev.map(a => a.id === payload.new.id ? payload.new as Application : a));
+          } else if (payload.eventType === 'DELETE') {
+            setApplications(prev => prev.filter(a => a.id !== payload.old.id));
+          }
+        })
+        .subscribe();
+
+      const creatorSubscription = supabase
+        .channel('creators_changes')
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'creators' }, (payload) => {
+          if (payload.eventType === 'INSERT') {
+            setCreators(prev => [payload.new as Creator, ...prev]);
+          } else if (payload.eventType === 'UPDATE') {
+            setCreators(prev => prev.map(c => c.id === payload.new.id ? payload.new as Creator : c));
+          } else if (payload.eventType === 'DELETE') {
+            setCreators(prev => prev.filter(c => c.id !== payload.old.id));
+          }
+        })
+        .subscribe();
+
+      return () => {
+        supabase.removeChannel(campaignSubscription);
+        supabase.removeChannel(applicationSubscription);
+        supabase.removeChannel(creatorSubscription);
+      };
+    }
   }, [session]);
 
   useEffect(() => {
@@ -394,30 +459,38 @@ const App: React.FC = () => {
   const handleCampaignFormSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const newCampaign: Partial<Campaign> = {
+      id: editingCampaign ? editingCampaign.id : `c-${Math.random().toString(36).substr(2, 9)}`,
       name: campaignFormData.name,
       brandId: role === UserRole.BRAND ? currentBrand!.id : 'admin',
       brandName: role === UserRole.BRAND ? currentBrand!.name : campaignFormData.brand,
-      brief: campaignFormData.brand, // Using brand field as brief for now if not provided
-      status: CampaignStatus.DRAFT,
+      brief: campaignFormData.brief || campaignFormData.brand,
+      status: editingCampaign ? editingCampaign.status : CampaignStatus.ACTIVE,
       budget: parseInt(campaignFormData.budget) || 0,
-      creatorCount: 0,
+      creatorCount: editingCampaign ? editingCampaign.creatorCount : 0,
       startDate: campaignFormData.startDate,
       endDate: campaignFormData.endDate,
       deadline: campaignFormData.endDate, // Default deadline to end date
       targetNiche: campaignFormData.category,
-      targetFollowers: 0
+      targetFollowers: editingCampaign ? editingCampaign.targetFollowers : 0
     };
     
     try {
       const saved = await upsertCampaign(newCampaign);
       if (saved) {
-        setCampaigns([saved, ...campaigns]);
+        if (editingCampaign) {
+          setCampaigns(campaigns.map(c => c.id === editingCampaign.id ? saved as Campaign : c));
+          alert('Campaign berhasil diperbarui!');
+        } else {
+          setCampaigns([saved, ...campaigns]);
+          alert('Campaign berhasil dibuat!');
+        }
         setIsCampaignModalOpen(false);
-        setCampaignFormData({ name: '', brand: '', budget: '', startDate: '', endDate: '', category: '' });
+        setEditingCampaign(null);
+        setCampaignFormData({ name: '', brand: '', budget: '', startDate: '', endDate: '', category: '', brief: '' });
       }
     } catch (err) {
       console.error('Failed to save campaign:', err);
-      alert('Gagal membuat campaign.');
+      alert('Gagal menyimpan campaign.');
     }
   };
 
@@ -454,13 +527,14 @@ const App: React.FC = () => {
       />
       
       <main className="flex-1 p-8">
-        {role === UserRole.CREATOR && activeView === 'creators' && (
+        {role === UserRole.CREATOR && (activeView === 'creators' || activeView === 'my-campaigns') && (
           <CreatorDashboard 
             creator={currentCreator!} 
             campaigns={campaigns} 
             applications={applications}
             onApply={async (campaignId) => {
               const newApp = await applyToCampaign({ 
+                id: `app-${Math.random().toString(36).substr(2, 9)}`,
                 campaignId, 
                 creatorId: currentCreator!.id, 
                 status: ApplicationStatus.PENDING,
@@ -483,13 +557,21 @@ const App: React.FC = () => {
           />
         )}
 
-        {role === UserRole.BRAND && activeView === 'creators' && (
+        {role === UserRole.BRAND && (activeView === 'creators' || activeView === 'my-campaigns') && (
           <BrandDashboard 
             brand={currentBrand!}
             campaigns={campaigns.filter(c => c.brandId === currentBrand!.id)}
             applications={applications.filter(a => campaigns.find(c => c.id === a.campaignId && c.brandId === currentBrand!.id))}
             creators={creators}
             onCreateCampaign={() => setIsCampaignModalOpen(true)}
+            onAcceptApplication={async (id) => {
+              const updated = await updateApplicationStatus(id, ApplicationStatus.ACCEPTED);
+              if (updated) setApplications(applications.map(a => a.id === id ? updated : a));
+            }}
+            onRejectApplication={async (id) => {
+              const updated = await updateApplicationStatus(id, ApplicationStatus.REJECTED);
+              if (updated) setApplications(applications.map(a => a.id === id ? updated : a));
+            }}
             onSendBrief={async (id) => {
               const updated = await updateApplicationStatus(id, ApplicationStatus.BRIEF_SENT);
               if (updated) setApplications(applications.map(a => a.id === id ? updated : a));
@@ -505,6 +587,53 @@ const App: React.FC = () => {
             onRateCreator={async (id, rating, feedback) => {
               const updated = await updateApplicationStatus(id, ApplicationStatus.PAID, { rating, feedback });
               if (updated) setApplications(applications.map(a => a.id === id ? updated : a));
+            }}
+            onPublishCampaign={async (id) => {
+              try {
+                const updated = await updateCampaign(id, { status: CampaignStatus.ACTIVE });
+                if (updated) {
+                  setCampaigns(campaigns.map(c => c.id === id ? { ...c, status: CampaignStatus.ACTIVE } : c));
+                  alert('Campaign berhasil diaktifkan!');
+                }
+              } catch (err) {
+                console.error('Failed to publish campaign:', err);
+                alert('Gagal mengaktifkan campaign. Pastikan semua data wajib terisi.');
+              }
+            }}
+            onEditCampaign={(campaign) => {
+              setEditingCampaign(campaign);
+              setCampaignFormData({
+                name: campaign.name,
+                brand: campaign.brandName,
+                budget: campaign.budget.toString(),
+                startDate: campaign.startDate,
+                endDate: campaign.endDate,
+                category: campaign.targetNiche,
+                brief: campaign.brief
+              });
+              setIsCampaignModalOpen(true);
+            }}
+          />
+        )}
+
+        {role === UserRole.CREATOR && activeView === 'home' && (
+          <CreatorHome 
+            creator={currentCreator!} 
+            campaigns={campaigns} 
+            applications={applications} 
+            onNavigate={setActiveView}
+            onApply={async (campaignId) => {
+              const newApp = await applyToCampaign({ 
+                id: `app-${Math.random().toString(36).substr(2, 9)}`,
+                campaignId, 
+                creatorId: currentCreator!.id, 
+                status: ApplicationStatus.PENDING,
+                paymentStatus: 'UNPAID'
+              });
+              if (newApp) {
+                setApplications([...applications, newApp]);
+                alert('Berhasil apply ke campaign!');
+              }
             }}
           />
         )}
@@ -667,8 +796,17 @@ const App: React.FC = () => {
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-md flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-200">
             <div className="p-8 border-b border-slate-50 flex justify-between items-center bg-slate-50/50">
-              <h3 className="text-xl font-black text-slate-900 tracking-tight">Buat Campaign Baru</h3>
-              <button onClick={() => setIsCampaignModalOpen(false)} className="text-slate-400 hover:text-slate-600 transition-colors">
+              <h3 className="text-xl font-black text-slate-900 tracking-tight">
+                {editingCampaign ? 'Edit Campaign' : 'Buat Campaign Baru'}
+              </h3>
+              <button 
+                onClick={() => {
+                  setIsCampaignModalOpen(false);
+                  setEditingCampaign(null);
+                  setCampaignFormData({ name: '', brand: '', budget: '', startDate: '', endDate: '', category: '', brief: '' });
+                }} 
+                className="text-slate-400 hover:text-slate-600 transition-colors"
+              >
                 <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"></path></svg>
               </button>
             </div>
@@ -680,6 +818,10 @@ const App: React.FC = () => {
               <div>
                 <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 ml-1">Brand</label>
                 <input required type="text" value={campaignFormData.brand} onChange={e => setCampaignFormData({...campaignFormData, brand: e.target.value})} className="w-full px-5 py-3 bg-slate-50 border border-slate-200 rounded-2xl outline-none focus:ring-4 focus:ring-yellow-100 focus:border-yellow-400 transition-all" />
+              </div>
+              <div>
+                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 ml-1">Brief / Deskripsi</label>
+                <textarea required value={campaignFormData.brief} onChange={e => setCampaignFormData({...campaignFormData, brief: e.target.value})} className="w-full px-5 py-3 bg-slate-50 border border-slate-200 rounded-2xl outline-none focus:ring-4 focus:ring-yellow-100 focus:border-yellow-400 transition-all min-h-[100px]" placeholder="Jelaskan detail campaign Anda..." />
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
@@ -703,7 +845,7 @@ const App: React.FC = () => {
               </div>
               <div className="pt-4">
                 <button type="submit" className="w-full py-4 bg-yellow-400 text-black font-black rounded-2xl shadow-xl hover:bg-yellow-500 active:scale-[0.97] transition-all uppercase text-xs tracking-widest">
-                  Buat Campaign
+                  {editingCampaign ? 'Update Campaign' : 'Buat Campaign'}
                 </button>
               </div>
             </form>
